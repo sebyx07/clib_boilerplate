@@ -12,14 +12,14 @@ PLATFORM = case RUBY_PLATFORM
            when /darwin/  then 'darwin'
            when /mswin|mingw/ then 'windows'
            else 'unknown'
-           end
+end
 
 ARCH = case RUBY_PLATFORM
        when /x86_64|amd64/ then 'x86_64'
        when /i386|x86/ then 'x86'
        when /arm64|aarch64/ then 'arm64'
        else 'unknown'
-       end
+end
 
 # Merge platform-specific settings
 platform_config = CLIB_CONFIG.dig('platforms', PLATFORM) || {}
@@ -48,7 +48,7 @@ LIB_EXT = case PLATFORM
           when 'darwin' then '.dylib'
           when 'windows' then '.dll'
           else '.so'
-          end
+end
 
 # Build directories structure
 BUILD_DIR = 'build'
@@ -72,29 +72,27 @@ def process_dependencies
 
   deps = {}
   CLIB_CONFIG['dependencies'].each do |dep_name, version|
-    begin
-      gem_spec = Gem::Specification.find_by_name(dep_name)
-      src_dir = File.join(gem_spec.gem_dir, 'ext/src')
+    gem_spec = Gem::Specification.find_by_name(dep_name)
+    src_dir = File.join(gem_spec.gem_dir, 'ext/src')
 
-      # Create include directory structure
-      include_dir = File.join(BUILD_DIR, 'include')
-      dep_include_dir = File.join(include_dir, dep_name)
-      FileUtils.mkdir_p(dep_include_dir)
+    # Create include directory structure
+    include_dir = File.join(BUILD_DIR, 'include')
+    dep_include_dir = File.join(include_dir, dep_name)
+    FileUtils.mkdir_p(dep_include_dir)
 
-      # Copy header files to namespaced directory
-      Dir[File.join(src_dir, '*.h')].each do |header|
-        FileUtils.cp(header, dep_include_dir)
-      end
-
-      deps[dep_name] = {
-        include_path: include_dir,  # Point to the root include directory
-        src_path: src_dir,         # Keep track of source location
-        lib_name: dep_name.gsub('-', '_'),
-        version: version
-      }
-    rescue Gem::MissingSpecError
-      puts "Warning: Dependency #{dep_name} (#{version}) not found"
+    # Copy header files to namespaced directory
+    Dir[File.join(src_dir, '*.h')].each do |header|
+      FileUtils.cp(header, dep_include_dir)
     end
+
+    deps[dep_name] = {
+      include_path: include_dir,  # Point to the root include directory
+      src_path: src_dir,         # Keep track of source location
+      lib_name: dep_name.tr('-', '_'),
+      version: version
+    }
+  rescue Gem::MissingSpecError
+    puts "Warning: Dependency #{dep_name} (#{version}) not found"
   end
   deps
 end
