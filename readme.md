@@ -141,8 +141,8 @@ dependencies:
 
 2. Use dependency headers in your code:
 ```c
-#include "useful.h"        // From clib-useful
-#include "other_lib.h"     // From clib-other
+#include "clib-useful/useful.h"        // From clib-useful
+#include "clib-other/other_lib.h"     // From clib-other
 
 void my_function(void) {
     useful_function();     // Use function from dependency

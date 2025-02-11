@@ -12,37 +12,14 @@ PLATFORM = case RUBY_PLATFORM
            when /darwin/  then 'darwin'
            when /mswin|mingw/ then 'windows'
            else 'unknown'
-end
+           end
 
 ARCH = case RUBY_PLATFORM
        when /x86_64|amd64/ then 'x86_64'
        when /i386|x86/ then 'x86'
        when /arm64|aarch64/ then 'arm64'
        else 'unknown'
-end
-
-# Process CLIb dependencies
-def process_dependencies
-  return {} unless CLIB_CONFIG['dependencies']
-
-  deps = {}
-  CLIB_CONFIG['dependencies'].each do |dep_name, version|
-    gem_spec = Gem::Specification.find_by_name(dep_name)
-    dep_config = YAML.load_file(File.join(gem_spec.gem_dir, '.clib.yml'))
-
-    deps[dep_name] = {
-      include_path: File.join(gem_spec.gem_dir, 'ext/src'),
-      lib_path: File.join(gem_spec.gem_dir, 'lib', dep_name),
-      lib_name: dep_config['name'],
-      version: version
-    }
-  rescue Gem::MissingSpecError
-    puts "Warning: Dependency #{dep_name} (#{version}) not found"
-  end
-  deps
-end
-
-DEPENDENCIES = process_dependencies
+       end
 
 # Merge platform-specific settings
 platform_config = CLIB_CONFIG.dig('platforms', PLATFORM) || {}
@@ -71,7 +48,7 @@ LIB_EXT = case PLATFORM
           when 'darwin' then '.dylib'
           when 'windows' then '.dll'
           else '.so'
-end
+          end
 
 # Build directories structure
 BUILD_DIR = 'build'
@@ -90,36 +67,72 @@ CLEAN.include("#{BUILD_DIR}/**/*")
 CLOBBER.include(BUILD_DIR)
 
 # Helper to generate dependency flags
+def process_dependencies
+  return {} unless CLIB_CONFIG['dependencies']
+
+  deps = {}
+  CLIB_CONFIG['dependencies'].each do |dep_name, version|
+    begin
+      gem_spec = Gem::Specification.find_by_name(dep_name)
+      src_dir = File.join(gem_spec.gem_dir, 'ext/src')
+
+      # Create include directory structure
+      include_dir = File.join(BUILD_DIR, 'include')
+      dep_include_dir = File.join(include_dir, dep_name)
+      FileUtils.mkdir_p(dep_include_dir)
+
+      # Copy header files to namespaced directory
+      Dir[File.join(src_dir, '*.h')].each do |header|
+        FileUtils.cp(header, dep_include_dir)
+      end
+
+      deps[dep_name] = {
+        include_path: include_dir,  # Point to the root include directory
+        src_path: src_dir,         # Keep track of source location
+        lib_name: dep_name.gsub('-', '_'),
+        version: version
+      }
+    rescue Gem::MissingSpecError
+      puts "Warning: Dependency #{dep_name} (#{version}) not found"
+    end
+  end
+  deps
+end
+
+DEPENDENCIES = process_dependencies
 def dependency_flags
   return ['', ''] if DEPENDENCIES.empty?
 
-  include_flags = DEPENDENCIES.values.map { |d| "-I#{d[:include_path]}" }.join(' ')
-  lib_flags = DEPENDENCIES.values.map do |d|
-    [
-      "-L#{d[:lib_path]}",
-      "-l#{d[:lib_name]}"
-    ].join(' ')
-  end.join(' ')
+  include_flags = DEPENDENCIES.values.map { |d| "-I#{d[:include_path]}" }.uniq.join(' ')
 
-  [include_flags, lib_flags]
+  [include_flags, '']
 end
+
+def dependency_sources
+  return '' if DEPENDENCIES.empty?
+
+  DEPENDENCIES.values.map do |dep|
+    Dir[File.join(dep[:src_path], '*.c')].map(&:to_s).join(' ')
+  end.join(' ')
+end
+
 
 namespace :compile do
   desc 'Compile the C library'
   task lib: BUILD_LIB_DIR do
     lib_file = "#{BUILD_LIB_DIR}/lib#{LIB_NAME}#{LIB_EXT}"
     source_files = FileList['ext/src/*.c'].map(&:to_s).join(' ')
-
-    include_flags, lib_flags = dependency_flags
+    dep_sources = dependency_sources
+    include_flags = DEPENDENCIES.values.map { |d| "-I#{d[:include_path]}" }.uniq.join(' ')
 
     compile_cmd = [
       CC,
       include_flags,
       CFLAGS.join(' '),
       LDFLAGS.join(' '),
-      lib_flags,
       "-o #{lib_file}",
-      source_files
+      source_files,
+      dep_sources  # Add dependency source files
     ].compact.join(' ')
 
     puts 'Compiling library...'
@@ -135,7 +148,8 @@ namespace :compile do
       test_bin = "#{BUILD_TEST_DIR}/#{test_name}#{PLATFORM == 'windows' ? '.exe' : ''}"
 
       source_files = FileList['ext/src/*.c'].map(&:to_s).join(' ')
-      include_flags, lib_flags = dependency_flags
+      dep_sources = dependency_sources
+      include_flags = DEPENDENCIES.values.map { |d| "-I#{d[:include_path]}" }.uniq.join(' ')
 
       compile_cmd = [
         CC,
@@ -143,10 +157,10 @@ namespace :compile do
         '-I./ext/src',
         CFLAGS.join(' '),
         TEST_CFLAGS.join(' '),
-        lib_flags,
         "-o #{test_bin}",
         test_file,
-        source_files
+        source_files,
+        dep_sources  # Add dependency source files
       ].compact.join(' ')
 
       puts "Compiling test: #{test_name}"
@@ -158,6 +172,9 @@ end
 
 desc 'Run tests'
 task :run_tests do
+  # Set LD_LIBRARY_PATH for running tests
+  ENV['LD_LIBRARY_PATH'] = DEPENDENCIES.values.map { |d| d[:lib_path] }.join(':')
+
   test_bins = FileList["#{BUILD_TEST_DIR}/*"]
   failed_tests = []
 
@@ -197,7 +214,7 @@ task :config do
     DEPENDENCIES.each do |name, info|
       puts "  #{name} (#{info[:version]}):"
       puts "    Include Path: #{info[:include_path]}"
-      puts "    Library Path: #{info[:lib_path]}"
+      puts "    Source Path: #{info[:src_path]}"
     end
   end
 end
