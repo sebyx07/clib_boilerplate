@@ -1,14 +1,12 @@
-# .clib.yml
----
-name: hello-world
+name: clib-hello-world
 version: 0.1.0
 compiler:
   cc: gcc
   cflags: -Wall -Wextra -O2
-  ldflags: # linker flags if needed
-dependencies: {}
+  ldflags:
+dependencies: {}  # No dependencies for this base library
 test:
-  cflags: -Wall -Wextra # test-specific flags
+  cflags: -Wall -Wextra
 platforms:
   linux:
     cflags: -fPIC

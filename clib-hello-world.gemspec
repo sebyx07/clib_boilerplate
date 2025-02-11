@@ -1,8 +1,12 @@
 # frozen_string_literal: true
 
+require 'yaml'
+
+config = YAML.load_file(File.join(__dir__, '.clib.yml'))
+
 Gem::Specification.new do |spec|
   spec.name          = 'clib-hello-world'
-  spec.version       = '0.1.0'
+  spec.version       = config['version']
   spec.authors       = ['sebi']
   spec.email         = ['sebastian.buza1@gmail.com']
 
@@ -12,6 +16,14 @@ Gem::Specification.new do |spec|
   spec.license       = 'MIT'
 
   spec.files         = Dir['{ext,include}/**/*', 'LICENSE', 'README.md']
+
+  spec.required_ruby_version = '>= 3.0'
+
+  if config['dependencies']
+    config['dependencies'].each do |lib, version|
+      spec.add_runtime_dependency lib, version
+    end
+  end
 
   spec.add_development_dependency 'rake', '~> 13.0'
 end

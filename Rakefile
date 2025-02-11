@@ -3,14 +3,8 @@
 require 'rake/clean'
 require 'yaml'
 require 'fileutils'
-
-# Load and parse .clib.yml
-begin
-  config = YAML.load_file('.clib.yml')
-rescue => e
-  puts "Error loading .clib.yml: #{e.message}"
-  config = {}
-end
+require 'rubygems'
+CLIB_CONFIG = YAML.load_file('.clib.yml')
 
 # Determine platform and architecture
 PLATFORM = case RUBY_PLATFORM
@@ -27,10 +21,35 @@ ARCH = case RUBY_PLATFORM
        else 'unknown'
        end
 
+# Process CLIb dependencies
+def process_dependencies
+  return {} unless CLIB_CONFIG['dependencies']
+
+  deps = {}
+  CLIB_CONFIG['dependencies'].each do |dep_name, version|
+    begin
+      gem_spec = Gem::Specification.find_by_name(dep_name)
+      dep_config = YAML.load_file(File.join(gem_spec.gem_dir, '.clib.yml'))
+
+      deps[dep_name] = {
+        include_path: File.join(gem_spec.gem_dir, 'ext/src'),
+        lib_path: File.join(gem_spec.gem_dir, 'lib', dep_name),
+        lib_name: dep_config['name'],
+        version: version
+      }
+    rescue Gem::MissingSpecError
+      puts "Warning: Dependency #{dep_name} (#{version}) not found"
+    end
+  end
+  deps
+end
+
+DEPENDENCIES = process_dependencies
+
 # Merge platform-specific settings
-platform_config = config.dig('platforms', PLATFORM) || {}
-compiler_config = (config['compiler'] || {}).merge(platform_config)
-test_config = config['test'] || {}
+platform_config = CLIB_CONFIG.dig('platforms', PLATFORM) || {}
+compiler_config = (CLIB_CONFIG['compiler'] || {}).merge(platform_config)
+test_config = CLIB_CONFIG['test'] || {}
 
 # Set up compilation variables
 CC = ENV['CC'] || compiler_config['cc'] || 'gcc'
@@ -45,8 +64,8 @@ LDFLAGS = ENV['LDFLAGS']&.split || BASE_LDFLAGS
 TEST_CFLAGS = [test_config['cflags']].flatten.compact
 
 # Library name and paths
-LIB_NAME = config['name'] || 'hello-world'
-LIB_VERSION = config['version'] || '0.1.0'
+LIB_NAME = CLIB_CONFIG['name']
+LIB_VERSION = CLIB_CONFIG['version'] || '0.1.0'
 
 # Platform-specific library extension
 LIB_EXT = case PLATFORM
@@ -72,13 +91,38 @@ directory BUILD_OBJ_DIR
 CLEAN.include("#{BUILD_DIR}/**/*")
 CLOBBER.include(BUILD_DIR)
 
+# Helper to generate dependency flags
+def dependency_flags
+  return ['', ''] if DEPENDENCIES.empty?
+
+  include_flags = DEPENDENCIES.values.map { |d| "-I#{d[:include_path]}" }.join(' ')
+  lib_flags = DEPENDENCIES.values.map do |d|
+    [
+      "-L#{d[:lib_path]}",
+      "-l#{d[:lib_name]}"
+    ].join(' ')
+  end.join(' ')
+
+  [include_flags, lib_flags]
+end
+
 namespace :compile do
   desc 'Compile the C library'
   task lib: BUILD_LIB_DIR do
     lib_file = "#{BUILD_LIB_DIR}/lib#{LIB_NAME}#{LIB_EXT}"
     source_files = FileList['ext/src/*.c'].map(&:to_s).join(' ')
 
-    compile_cmd = "#{CC} #{CFLAGS.join(' ')} #{LDFLAGS.join(' ')} -o #{lib_file} #{source_files}"
+    include_flags, lib_flags = dependency_flags
+
+    compile_cmd = [
+      CC,
+      include_flags,
+      CFLAGS.join(' '),
+      LDFLAGS.join(' '),
+      lib_flags,
+      "-o #{lib_file}",
+      source_files
+    ].compact.join(' ')
 
     puts 'Compiling library...'
     puts compile_cmd if ENV['VERBOSE']
@@ -93,7 +137,19 @@ namespace :compile do
       test_bin = "#{BUILD_TEST_DIR}/#{test_name}#{PLATFORM == 'windows' ? '.exe' : ''}"
 
       source_files = FileList['ext/src/*.c'].map(&:to_s).join(' ')
-      compile_cmd = "#{CC} #{CFLAGS.join(' ')} #{TEST_CFLAGS.join(' ')} -I./ext/src -o #{test_bin} #{test_file} #{source_files}"
+      include_flags, lib_flags = dependency_flags
+
+      compile_cmd = [
+        CC,
+        include_flags,
+        "-I./ext/src",
+        CFLAGS.join(' '),
+        TEST_CFLAGS.join(' '),
+        lib_flags,
+        "-o #{test_bin}",
+        test_file,
+        source_files
+      ].compact.join(' ')
 
       puts "Compiling test: #{test_name}"
       puts compile_cmd if ENV['VERBOSE']
@@ -116,7 +172,7 @@ task :run_tests do
   puts "\nTest Results:"
   puts "#{test_bins.size} tests run, #{failed_tests.size} failures"
   unless failed_tests.empty?
-    puts "Failed tests:"
+    puts 'Failed tests:'
     failed_tests.each { |test| puts "  - #{File.basename(test)}" }
     exit 1
   end
@@ -137,6 +193,48 @@ task :config do
   puts "  Library Version: #{LIB_VERSION}"
   puts "  Library Extension: #{LIB_EXT}"
   puts "  Build Directory: #{BUILD_DIR}"
+
+  unless DEPENDENCIES.empty?
+    puts "\nDependencies:"
+    DEPENDENCIES.each do |name, info|
+      puts "  #{name} (#{info[:version]}):"
+      puts "    Include Path: #{info[:include_path]}"
+      puts "    Library Path: #{info[:lib_path]}"
+    end
+  end
 end
+
+namespace :gem do
+  desc 'Build gem and move to build directory'
+  task :build do
+    # Build the gem
+    system "gem build #{LIB_NAME}.gemspec"
+
+    # Move to build directory
+    gem_file = "#{LIB_NAME}-#{LIB_VERSION}.gem"
+    if File.exist?(gem_file)
+      FileUtils.mv(gem_file, "#{BUILD_DIR}/#{gem_file}")
+      puts "Moved #{gem_file} to #{BUILD_DIR}/"
+    else
+      puts 'Error: Failed to build gem'
+      exit 1
+    end
+  end
+
+  desc 'Publish gem to RubyGems'
+  task :publish do
+    gem_file = FileList["#{BUILD_DIR}/#{LIB_NAME}-*.gem"].first
+    if gem_file
+      puts "Publishing #{gem_file} to RubyGems..."
+      system "gem push #{gem_file}"
+    else
+      puts "No .gem file found in #{BUILD_DIR}/. Run 'rake gem:build' first"
+      exit 1
+    end
+  end
+end
+
+# Add gem files to clean task
+CLEAN.include("#{BUILD_DIR}/*.gem")
 
 task default: [:config, 'compile:lib', :test]
