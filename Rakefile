@@ -12,14 +12,14 @@ PLATFORM = case RUBY_PLATFORM
            when /darwin/  then 'darwin'
            when /mswin|mingw/ then 'windows'
            else 'unknown'
-           end
+end
 
 ARCH = case RUBY_PLATFORM
        when /x86_64|amd64/ then 'x86_64'
        when /i386|x86/ then 'x86'
        when /arm64|aarch64/ then 'arm64'
        else 'unknown'
-       end
+end
 
 # Process CLIb dependencies
 def process_dependencies
@@ -27,19 +27,17 @@ def process_dependencies
 
   deps = {}
   CLIB_CONFIG['dependencies'].each do |dep_name, version|
-    begin
-      gem_spec = Gem::Specification.find_by_name(dep_name)
-      dep_config = YAML.load_file(File.join(gem_spec.gem_dir, '.clib.yml'))
+    gem_spec = Gem::Specification.find_by_name(dep_name)
+    dep_config = YAML.load_file(File.join(gem_spec.gem_dir, '.clib.yml'))
 
-      deps[dep_name] = {
-        include_path: File.join(gem_spec.gem_dir, 'ext/src'),
-        lib_path: File.join(gem_spec.gem_dir, 'lib', dep_name),
-        lib_name: dep_config['name'],
-        version: version
-      }
-    rescue Gem::MissingSpecError
-      puts "Warning: Dependency #{dep_name} (#{version}) not found"
-    end
+    deps[dep_name] = {
+      include_path: File.join(gem_spec.gem_dir, 'ext/src'),
+      lib_path: File.join(gem_spec.gem_dir, 'lib', dep_name),
+      lib_name: dep_config['name'],
+      version: version
+    }
+  rescue Gem::MissingSpecError
+    puts "Warning: Dependency #{dep_name} (#{version}) not found"
   end
   deps
 end
@@ -73,7 +71,7 @@ LIB_EXT = case PLATFORM
           when 'darwin' then '.dylib'
           when 'windows' then '.dll'
           else '.so'
-          end
+end
 
 # Build directories structure
 BUILD_DIR = 'build'
@@ -142,7 +140,7 @@ namespace :compile do
       compile_cmd = [
         CC,
         include_flags,
-        "-I./ext/src",
+        '-I./ext/src',
         CFLAGS.join(' '),
         TEST_CFLAGS.join(' '),
         lib_flags,
