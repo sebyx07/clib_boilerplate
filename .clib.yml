@@ -1,5 +1,5 @@
 name: clib-hello-world
-version: 0.1.0
+version: 0.1.1
 compiler:
   cc: gcc
   cflags: -Wall -Wextra -O2

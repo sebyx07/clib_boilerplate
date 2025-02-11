@@ -15,7 +15,7 @@ Gem::Specification.new do |spec|
   spec.homepage      = 'https://github.com/sebyx07/clib_boilerplate'
   spec.license       = 'MIT'
 
-  spec.files         = Dir['{ext,include}/**/*', 'LICENSE', 'README.md']
+  spec.files         = Dir['{ext,include}/**/*', 'LICENSE', 'README.md', '.clib.yml']
 
   spec.required_ruby_version = '>= 3.0'
 
