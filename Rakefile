@@ -221,7 +221,7 @@ namespace :gem do
 
   desc 'Publish gem to RubyGems'
   task :publish do
-    gem_file = FileList["#{BUILD_DIR}/#{LIB_NAME}-*.gem"].first
+    gem_file = FileList["#{BUILD_DIR}/#{LIB_NAME}-#{LIB_VERSION}.gem"]
     if gem_file
       puts "Publishing #{gem_file} to RubyGems..."
       system "gem push #{gem_file}"
