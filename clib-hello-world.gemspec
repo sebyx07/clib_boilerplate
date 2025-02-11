@@ -12,7 +12,7 @@ Gem::Specification.new do |spec|
 
   spec.summary       = 'A simple Hello World C library'
   spec.description   = 'Example C library using the clib packaging system'
-  spec.homepage      = 'https://github.com/sebi/clib-hello-world'
+  spec.homepage      = 'https://github.com/sebyx07/clib_boilerplate'
   spec.license       = 'MIT'
 
   spec.files         = Dir['{ext,include}/**/*', 'LICENSE', 'README.md']
