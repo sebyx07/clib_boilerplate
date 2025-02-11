@@ -1,0 +1,22 @@
+# .clib.yml
+---
+name: hello-world
+version: 0.1.0
+compiler:
+  cc: gcc
+  cflags: -Wall -Wextra -O2
+  ldflags: # linker flags if needed
+dependencies: {}
+test:
+  cflags: -Wall -Wextra # test-specific flags
+platforms:
+  linux:
+    cflags: -fPIC
+    ldflags: -shared
+  darwin:
+    cflags: -fPIC
+    ldflags: -dynamiclib
+  windows:
+    cc: cl
+    cflags: /W4
+    ldflags: /DLL

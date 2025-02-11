@@ -1,0 +1,21 @@
+# Build directory
+build/
+
+# Build artifacts
+*.o
+*.so
+*.dll
+*.dylib
+*.out
+*.exe
+
+# Ruby/Bundler
+*.gem
+.bundle/
+vendor/
+
+# Editor/OS specific
+.DS_Store
+.vscode/
+.idea/
+*~
